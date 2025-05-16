@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "flashcards-api"
+version = "0.1.0"
+description = "A flashcards API for learning purposes"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+packages = [{ include = "app" }]  # Include the `app` directory as the package
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = ">=0.95.0"
+uvicorn = ">=0.21.1"
+sqlalchemy = ">=2.0.7"
+pydantic = ">=2.0.0"
+pydantic-settings = ">=2.0.0"
+python-jose = ">=3.3.0"
+passlib = ">=1.7.4"
+python-multipart = ">=0.0.6"
+email-validator = ">=2.0.0"
+alembic = ">=1.10.2"
+bcrypt = ">=4.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.3.1"
+httpx = ">=0.24.0"
+
+[build-system]
+requires = ["poetry-core>=1.5.0"]
+build-backend = "poetry.core.masonry.api"
