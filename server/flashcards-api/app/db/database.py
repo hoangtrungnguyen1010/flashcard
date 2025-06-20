@@ -1,10 +1,14 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+import os
 
-from app.config import settings
+# Load environment variables from .env file
+load_dotenv()
 
-engine = create_engine(settings.DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Get MongoDB connection details from environment variables
+MONGO_URL = os.getenv("MONGO_URL")
+DATABASE_NAME = os.getenv("MONGO_DATABASE", "flashcards")  # Default to "flashcards" if not provided
 
-Base = declarative_base()
+# Initialize MongoDB client
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DATABASE_NAME]

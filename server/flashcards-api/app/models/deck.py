@@ -1,24 +1,23 @@
-import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from bson import ObjectId
+from helper import PyObjectId
 
-from app.db.database import Base
+class Deck(BaseModel):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    name: str
+    description: Optional[str] = None
+    user_id: PyObjectId
+    flashcards: Optional[List[PyObjectId]] = []
 
-class Deck(Base):
-    __tablename__ = "decks"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    is_public = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Foreign keys
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
-    # Relationships
-    user = relationship("User", back_populates="decks")
-    flashcards = relationship("Flashcard", back_populates="deck", cascade="all, delete-orphan")
+    class Config:
+        allow_population_by_field_name = True
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "name": "My Deck",
+                "description": "This is a sample deck",
+                "user_id": "60f7f0d8f1d3f82b2a4e8301",
+                "flashcards": ["60f7f0d8f1d3f82b2a4e8302", "60f7f0d8f1d3f82b2a4e8303"],
+            }
+        }

@@ -29,6 +29,15 @@ class DeckRepository(BaseRepository[Deck, DeckCreate, DeckUpdate]):
             .all()
         )
         
+    def get_by_name(
+        self, db: Session, *, name: str, user_id: UUID
+    ) -> Optional[Deck]:
+        return (
+            db.query(Deck)
+            .filter(Deck.name == name, Deck.user_id == user_id)
+            .first()
+        )
+        
     def search(
         self, db: Session, *, query: str, user_id: Optional[UUID] = None, limit: int = 10
     ) -> List[Deck]:

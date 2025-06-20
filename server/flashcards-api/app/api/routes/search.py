@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from typing import Any, Optional
 from uuid import UUID
@@ -8,6 +8,7 @@ from app.api import deps
 from app.db.repositories import user_repository, flashcard_repository, deck_repository
 from app.models.user import User
 from app.config import settings
+from app.services.search_service import SearchService
 
 router = APIRouter(prefix=f"{settings.API_V1_STR}/search", tags=["search"])
 
@@ -48,3 +49,80 @@ def search(
         results.users = users
     
     return results
+
+@router.post("/generate-flashcards", response_model=schemas.GeneratedFlashcardsResponse)
+async def generate_flashcards_from_search(
+    *,
+    request: schemas.GenerateFlashcardsRequest,
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Search Google for content and generate flashcards using OpenAPI.
+    """
+    if not settings.OPENAI_API_KEY or not settings.SERPAPI_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Search functionality is not configured. Please set OPENAI_API_KEY and SERPAPI_KEY environment variables."
+        )
+    
+    try:
+        search_service = SearchService()
+        flashcards = await search_service.search_and_generate_flashcards(
+            query=request.query,
+            num_flashcards=request.num_flashcards
+        )
+        
+        return schemas.GeneratedFlashcardsResponse(
+            flashcards=flashcards,
+            query=request.query,
+            count=len(flashcards)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating flashcards: {str(e)}"
+        )
+
+@router.post("/save-generated-flashcards", response_model=schemas.SaveFlashcardsResponse)
+async def save_generated_flashcards(
+    *,
+    request: schemas.SaveFlashcardsRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Save generated flashcards to a deck.
+    """
+    try:
+        # Create or get the deck
+        deck = deck_repository.get_by_name(db, name=request.deck_name, user_id=current_user.id)
+        if not deck:
+            deck_data = schemas.DeckCreate(
+                name=request.deck_name,
+                description=f"Generated flashcards for: {request.query}"
+            )
+            deck = deck_repository.create(db, obj_in=deck_data, user_id=current_user.id)
+        
+        # Create flashcards
+        created_flashcards = []
+        for flashcard_data in request.flashcards:
+            flashcard_create = schemas.FlashcardCreate(
+                question=flashcard_data["question"],
+                answer=flashcard_data["answer"],
+                deck_id=deck.id
+            )
+            flashcard = flashcard_repository.create(db, obj_in=flashcard_create, user_id=current_user.id)
+            created_flashcards.append(flashcard)
+        
+        return schemas.SaveFlashcardsResponse(
+            deck=deck,
+            flashcards=created_flashcards,
+            count=len(created_flashcards)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error saving flashcards: {str(e)}"
+        )

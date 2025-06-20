@@ -9,10 +9,12 @@ import {
     StyleSheet,
     SafeAreaView,
     StatusBar,
+    TextInput,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList, Flashcard } from '../types/navigation';
+import { apiService, GeneratedFlashcard } from '../utils/api';
 
 type SearchResultsScreenProps = {
     navigation: StackNavigationProp<RootStackParamList, 'SearchResults'>;
@@ -21,55 +23,57 @@ type SearchResultsScreenProps = {
 
 const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({ navigation, route }) => {
   const { query } = route.params; // Query passed from previous screen
-  const [results, setResults] = useState<Flashcard[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [results, setResults] = useState<GeneratedFlashcard[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [generating, setGenerating] = useState<boolean>(false);
-
-  // Fetch search results when the component mounts
-  useEffect(() => {
-    const fetchSearchResults = async () => {
-      try {
-        const response = await fetch(`https://example.com/api/search?q=${encodeURIComponent(query)}`);
-        const data = await response.json();
-        setResults(data.results || []);
-      } catch (error) {
-        console.error(error);
-        Alert.alert('Error', 'Failed to fetch search results.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSearchResults();
-  }, [query]);
+  const [deckName, setDeckName] = useState<string>('');
+  const [showSaveDialog, setShowSaveDialog] = useState<boolean>(false);
 
   // Generate flashcards based on the search query
   const handleGenerateFlashcards = async () => {
     setGenerating(true);
     try {
-      const response = await fetch('https://example.com/api/flashcards', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query }),
+      const response = await apiService.generateFlashcards({
+        query: query,
+        num_flashcards: 5
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to generate flashcards');
-      }
+      setResults(response.flashcards);
+      setDeckName(`Generated: ${query}`);
+      setShowSaveDialog(true);
 
-      const generatedData = await response.json();
-      const newFlashcards: Flashcard[] = generatedData.flashcards || [];
-
-      setResults((prevResults) => [...newFlashcards, ...prevResults]);
-
-      Alert.alert('Success', `${newFlashcards.length} flashcards generated successfully!`);
+      Alert.alert('Success', `${response.count} flashcards generated successfully!`);
     } catch (error) {
       console.error(error);
-      Alert.alert('Error', 'Failed to generate flashcards.');
+      Alert.alert('Error', 'Failed to generate flashcards. Please check your API configuration.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // Save generated flashcards to a deck
+  const handleSaveFlashcards = async () => {
+    if (!deckName.trim()) {
+      Alert.alert('Error', 'Please enter a deck name');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await apiService.saveGeneratedFlashcards({
+        flashcards: results,
+        deck_name: deckName,
+        query: query
+      });
+
+      Alert.alert('Success', `Flashcards saved to deck "${response.deck.name}"!`);
+      setShowSaveDialog(false);
+      setResults([]);
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to save flashcards.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -79,21 +83,13 @@ const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({ navigation, r
   };
 
   // Render each flashcard
-  const renderFlashcard = ({ item }: { item: Flashcard }) => (
-    <TouchableOpacity style={styles.card} activeOpacity={0.7}>
+  const renderFlashcard = ({ item }: { item: GeneratedFlashcard }) => (
+    <View style={styles.card}>
       <View style={styles.cardContent}>
         <Text style={styles.cardTitle}>{item.question}</Text>
         <Text style={styles.cardSubtitle}>{item.answer}</Text>
       </View>
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionIcon}>✏️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionIcon}>🗑️</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -105,7 +101,7 @@ const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({ navigation, r
         <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Results for "{query}"</Text>
+        <Text style={styles.headerTitle}>Search: "{query}"</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.settingsButton}>
             <Text style={styles.settingsIcon}>⚙️</Text>
@@ -120,36 +116,55 @@ const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({ navigation, r
         disabled={generating}
       >
         <Text style={styles.generateButtonText}>
-          {generating ? 'Generating Flashcards...' : 'Generate Flashcards'}
+          {generating ? 'Generating Flashcards...' : 'Generate Flashcards from Web'}
         </Text>
       </TouchableOpacity>
 
-      {/* Results */}
-      {loading ? (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#2196F3" />
-          <Text style={styles.loadingText}>Finding flashcards...</Text>
+      {/* Save Dialog */}
+      {showSaveDialog && (
+        <View style={styles.saveDialog}>
+          <Text style={styles.saveDialogTitle}>Save Flashcards</Text>
+          <TextInput
+            style={styles.deckNameInput}
+            placeholder="Enter deck name"
+            value={deckName}
+            onChangeText={setDeckName}
+          />
+          <View style={styles.saveDialogButtons}>
+            <TouchableOpacity
+              style={[styles.saveButton, styles.cancelButton]}
+              onPress={() => setShowSaveDialog(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, styles.confirmButton]}
+              onPress={handleSaveFlashcards}
+              disabled={loading}
+            >
+              <Text style={styles.confirmButtonText}>
+                {loading ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      ) : (
+      )}
+
+      {/* Results */}
+      {results.length > 0 ? (
         <FlatList
           data={results}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item, index) => index.toString()}
           renderItem={renderFlashcard}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No flashcards found</Text>
-              <Text style={styles.emptySubtext}>Try generating new flashcards</Text>
-            </View>
-          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No flashcards generated yet</Text>
+          <Text style={styles.emptySubtext}>Tap "Generate Flashcards" to create flashcards from web search</Text>
+        </View>
       )}
-
-      {/* Floating Action Button */}
-      <TouchableOpacity style={styles.fab}>
-        <Text style={styles.fabIcon}>+</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 };
@@ -213,15 +228,56 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  saveDialog: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    padding: 16,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  loadingText: {
-    marginTop: 12,
-    color: '#757575',
+  saveDialogTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  deckNameInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 4,
+    padding: 12,
+    marginBottom: 16,
     fontSize: 16,
+  },
+  saveDialogButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 4,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  cancelButton: {
+    backgroundColor: '#F5F5F5',
+  },
+  confirmButton: {
+    backgroundColor: '#2196F3',
+  },
+  cancelButtonText: {
+    color: '#757575',
+    fontWeight: '600',
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   listContent: {
     paddingHorizontal: 16,
@@ -236,72 +292,39 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 2,
     elevation: 1,
-    flexDirection: 'row',
-    overflow: 'hidden',
   },
   cardContent: {
-    flex: 1,
     padding: 16,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#212121',
+    marginBottom: 8,
   },
   cardSubtitle: {
     fontSize: 14,
     color: '#757575',
-    marginTop: 4,
-  },
-  cardActions: {
-    flexDirection: 'column',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    borderLeftWidth: 1,
-    borderLeftColor: '#F0F0F0',
-    paddingHorizontal: 12,
-  },
-  actionButton: {
-    padding: 8,
-  },
-  actionIcon: {
-    fontSize: 18,
+    lineHeight: 20,
   },
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingHorizontal: 32,
   },
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#616161',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
     color: '#9E9E9E',
-    marginTop: 8,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#2196F3',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.27,
-    shadowRadius: 4.65,
-    elevation: 6,
-  },
-  fabIcon: {
-    fontSize: 24,
-    color: 'white',
-    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

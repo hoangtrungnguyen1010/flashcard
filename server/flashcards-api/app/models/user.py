@@ -1,21 +1,25 @@
-import uuid
-from datetime import datetime
-from sqlalchemy import Boolean, Column, String, DateTime
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional
+from helper import PyObjectId
+from bson import ObjectId
 
-from app.db.database import Base
+class User(BaseModel):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    email: EmailStr
+    username: str
+    hashed_password: str
+    is_active: bool = True
+    flashcard_lists: Optional[List[str]] = []
 
-class User(Base):
-    __tablename__ = "users"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String, unique=True, index=True, nullable=False)
-    username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
-    
-    # Relationships
-    decks = relationship("Deck", back_populates="user", cascade="all, delete-orphan")
-    flashcards = relationship("Flashcard", back_populates="user", cascade="all, delete-orphan")
+    class Config:
+        allow_population_by_field_name = True
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "email": "user@example.com",
+                "username": "user123",
+                "hashed_password": "hashedpassword",
+                "is_active": True,
+                "flashcard_lists": ["deck1_id", "deck2_id"],
+            }
+        }
